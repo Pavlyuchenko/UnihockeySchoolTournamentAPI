@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, request
 from flask_sqlalchemy import SQLAlchemy
 from flask_cors import CORS, cross_origin
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 app = Flask(__name__)
@@ -21,13 +21,13 @@ class Tym(db.Model):
     zaplaceno = db.Column(db.Boolean, nullable=False, default=False)
     time_created = db.Column(db.DateTime, default=datetime.utcnow)
 
-    played_matches = db.Column(db.Integer, default=0)
-    wins = db.Column(db.Integer, default=0)
-    draws = db.Column(db.Integer, default=0)
-    loses = db.Column(db.Integer, default=0)
-    goals_shot = db.Column(db.Integer, default=0)
-    goals_got = db.Column(db.Integer, default=0)
-    points = db.Column(db.Integer, default=0)
+    odehrane_zapasy = db.Column(db.Integer, default=0)
+    vyhry = db.Column(db.Integer, default=0)
+    remizy = db.Column(db.Integer, default=0)
+    prohry = db.Column(db.Integer, default=0)
+    vstrelene_goly = db.Column(db.Integer, default=0)
+    obdrzene_goly = db.Column(db.Integer, default=0)
+    body = db.Column(db.Integer, default=0)
 
     domaci = db.relationship('Zapas', backref='Domaci', lazy='dynamic', cascade="all, delete-orphan", foreign_keys='Zapas.domaci')
     hoste = db.relationship('Zapas', backref='Hoste', lazy='dynamic', cascade="all, delete-orphan", foreign_keys='Zapas.hoste')
@@ -47,6 +47,25 @@ class Tym(db.Model):
             "nazev": self.nazev,
             "potvrzeno": self.potvrzeno,
             "zaplaceno": self.zaplaceno,
+            "hraci": hraci_arr,
+            "vyhry": self.vyhry,
+            "remizy": self.remizy,
+            "prohry": self.prohry,
+            "vstrelene_goly": self.vstrelene_goly,
+            "obdrzene_goly": self.obdrzene_goly,
+            "body": self.body
+        }
+
+    def jsonify_adming(self):
+        hraci = Hrac.query.filter_by(tym_id=self.id)
+        hraci_arr = []
+
+        for hrac in hraci:
+            hraci_arr.append({'jmeno': hrac.jmeno, 'trida': hrac.trida})
+
+        return {
+            "id": self.id,
+            "nazev": self.nazev,
             "hraci": hraci_arr
         }
 
@@ -66,7 +85,7 @@ class Zapas(db.Model):
     domaci = db.Column(db.Integer, db.ForeignKey('tym.id'))
     hoste = db.Column(db.Integer, db.ForeignKey('tym.id'))
 
-    order = db.Column(db.Integer)
+    order = db.Column(db.Integer, unique=True)
 
     def jsonify(self):
         return {
@@ -83,17 +102,55 @@ class Statistika(db.Model):
     navstevnici = db.Column(db.Integer, nullable=False)
 
 
+class Casovac(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+
+    cas = db.Column(db.String(100))
+    skore = db.Column(db.String(10))
+
+    current_order = db.Column(db.Integer, default=10)
+
+    current_phase = db.Column(db.Integer, default=1)  # 1 = Registrace týmů, 2 = Skupinová fáze, 3 = Pavouk
+
+    def jsonify(self):
+
+        tm = datetime.strptime(self.cas, "%Y-%m-%d %H:%M:%S.%f") - datetime.now()
+        tm = str(tm).split(":")
+        tm = str(11 - int(tm[1])) + ":" + str(59 - int(tm[2].split(".")[0]))
+
+        return {
+            'minuty': tm.split(":")[0],
+            'sekundy': tm.split(":")[1],
+            'skore1': self.skore.split(":")[0],
+            'skore2': self.skore.split(":")[1],
+            'order': self.current_order
+        }
+
+
+@app.route('/init', methods=['GET', 'POST'])
+def init():
+    casovac = Casovac(cas=datetime.today() + timedelta(minutes=11, seconds=60), skore="0:0")
+    db.session.add(casovac)
+    db.session.commit()
+
+    tymy = ['Vygrachanci', 'Antišunkofleci', 'Boney M', 'Učitelé', 'Pobo Team', 'Milanovi Kořeni']
+
+    for i in tymy:
+        tym = Tym(nazev=i, potvrzeno=False, zaplaceno=False)
+        db.session.add(tym)
+        db.session.commit()
+
+    for i in range(1, 5):
+        zapas = Zapas(domaci=i, hoste=i+1, order=i*10)
+        db.session.add(zapas)
+    db.session.commit()
+
+    return 'success'
+
+
 @app.route('/main', methods=['GET', 'POST'])
 @cross_origin()
 def main():
-
-    domaci = Tym.query.filter_by(id=1).first()
-    hoste = Tym.query.filter_by(id=2).first()
-
-    zapas = Zapas(domaci=domaci.id, hoste=hoste.id, order=10)
-    db.session.add(zapas)
-    db.session.commit()
-
     zapasy = Zapas.query.order_by(Zapas.order)
     res = []
     count = 0
@@ -104,7 +161,87 @@ def main():
         if count == 5:
             break
 
-    return jsonify({'zapasy': res})
+    casovac = Casovac.query.first().jsonify()
+
+    return jsonify({'zapasy': res, 'casovac': casovac})
+
+
+@app.route('/adming', methods=['GET', 'POST'])
+@cross_origin()
+def adming():
+    zapasy = Zapas.query.order_by(Zapas.order)
+    res = []
+    count = 0
+
+    for i in zapasy:
+        count += 1
+        res.append(i.jsonify())
+
+    tymy = Tym.query.order_by(Tym.nazev)
+    tymy_res = []
+
+    for i in tymy:
+        tymy_res.append(i.jsonify())
+
+    return jsonify({'zapasy': res, 'tymy': tymy_res})
+
+
+@app.route('/update_order', methods=['GET', 'POST'])
+def update_order():
+    json = request.json
+
+    zapas = Zapas.query.filter(Zapas.id == json["id"]).first()
+    zapas.order = int(json["order"])
+
+    db.session.commit()
+
+    return 'Success'
+
+
+@app.route('/add_zapas', methods=['GET', 'POST'])
+def add_zapas():
+    json = request.json
+
+    zapas = Zapas()
+    db.session.add(zapas)
+    db.session.commit()
+
+    return 'Success'
+
+
+@app.route('/get_teams', methods=['GET'])
+def get_teams():
+    tymy = Tym.query.order_by(Tym.nazev)
+    res = []
+
+    for i in tymy:
+        res.append(i.jsonify())
+    print(res)
+    return jsonify({'tymy': res})
+
+
+@app.route('/get_curr_zapas', methods=['GET'])
+@cross_origin()
+def get_curr_zapas():
+    casovac = Casovac.query.first()
+    zapas = Zapas.query.order_by(Zapas.order).filter(Zapas.order > casovac.current_order).first()
+
+    return jsonify({'zapas': zapas.jsonify()})
+
+
+@app.route('/update_casovac', methods=['GET', 'POST'])
+@cross_origin()
+def update_casovac():
+    json = request.json
+
+    print(json)
+
+    casovac = Casovac.query.first()
+    casovac.cas = datetime.today() + timedelta(minutes=11-int(json["minuty"]), seconds=60-int(json["sekundy"]))
+
+    db.session.commit()
+
+    return jsonify({"success": "success"})
 
 
 @app.route('/register', methods=['GET', 'POST'])
