@@ -53,7 +53,8 @@ class Tym(db.Model):
             "prohry": self.prohry,
             "vstrelene_goly": self.vstrelene_goly,
             "obdrzene_goly": self.obdrzene_goly,
-            "body": self.body
+            "body": self.body,
+            "zapasy": self.odehrane_zapasy
         }
 
     def jsonify_adming(self):
@@ -140,6 +141,24 @@ def init():
         db.session.add(tym)
         db.session.commit()
 
+    hraci = [[{'jmeno': 'Michal Pavlíček', 'trida': '6.A'}, {'jmeno': 'Tomáš Adamec', 'trida': '6.A'}, {'jmeno': 'Lukáš Procházka', 'trida': '6.A'}, {'jmeno': 'Vojta Olšr', 'trida': '6.A'}],
+             [{'jmeno': 'Erik Schonwalder', 'trida': '6.A'}, {'jmeno': 'Adam Lehnert', 'trida': '1.C'}, {'jmeno': 'Šimon Benš', 'trida': '6.A'}, {'jmeno': 'Dave Langer', 'trida': '6.A'}],
+             [{'jmeno': 'Tomáš Nagy', 'trida': '8.A'}, {'jmeno': 'Žirafoun Druhý', 'trida': '8.A'}, {'jmeno': 'Komiksák Druhý', 'trida': '8.A'}, {'jmeno': 'Malohoštický Zmrd', 'trida': '8.A'}],
+             [{'jmeno': 'Aleš Staněk', 'trida': ''}, {'jmeno': 'Martin Kuček', 'trida': ''}, {'jmeno': 'Daniel Honka', 'trida': ''}, {'jmeno': 'Daniel Vítek', 'trida': ''}],
+             [{'jmeno': 'Milan Pobořil', 'trida': ''}, {'jmeno': 'Petr Janšta', 'trida': ''}, {'jmeno': 'Fakový Loupakis', 'trida': ''}, {'jmeno': 'Marie Koutná', 'trida': ''}],
+             [{'jmeno': 'Michal Pavlíček', 'trida': '6.A'}, {'jmeno': 'Tomáš Adamec', 'trida': '6.A'}, {'jmeno': 'Lukáš Procházka', 'trida': '6.A'}, {'jmeno': 'Vojta Olšr', 'trida': '6.A'}]
+            ]
+
+    tym_id = 0
+    for i in hraci:
+        tym_id += 1
+        for j in i:
+            print(j)
+            plejer = Hrac(jmeno=j['jmeno'], trida=j['trida'], tym_id=tym_id)
+            db.session.add(plejer)
+
+    db.session.commit()
+
     for i in range(1, 5):
         zapas = Zapas(domaci=i, hoste=i+1, order=i*10)
         db.session.add(zapas)
@@ -198,17 +217,6 @@ def update_order():
     return 'Success'
 
 
-@app.route('/add_zapas', methods=['GET', 'POST'])
-def add_zapas():
-    json = request.json
-
-    zapas = Zapas()
-    db.session.add(zapas)
-    db.session.commit()
-
-    return 'Success'
-
-
 @app.route('/get_teams', methods=['GET'])
 def get_teams():
     tymy = Tym.query.order_by(Tym.nazev)
@@ -234,11 +242,21 @@ def get_curr_zapas():
 def update_casovac():
     json = request.json
 
-    print(json)
-
     casovac = Casovac.query.first()
     casovac.cas = datetime.today() + timedelta(minutes=11-int(json["minuty"]), seconds=60-int(json["sekundy"]))
 
+    db.session.commit()
+
+    return jsonify({"success": "success"})
+
+
+@app.route('/add_zapas', methods=['GET', 'POST'])
+@cross_origin()
+def add_zapas():
+    json = request.json
+    print(json)
+    zapas = Zapas(domaci=json['domaci_id'], hoste=json['hoste_id'], order=json['order'])
+    db.session.add(zapas)
     db.session.commit()
 
     return jsonify({"success": "success"})
