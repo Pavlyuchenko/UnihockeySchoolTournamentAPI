@@ -107,24 +107,32 @@ class Casovac(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     cas = db.Column(db.String(100))
+    pause_cas = db.Column(db.String(100))
+    pause = db.Column(db.Boolean)
     skore = db.Column(db.String(10))
 
-    current_order = db.Column(db.Integer, default=10)
+    current_order = db.Column(db.Integer, default=0)
 
     current_phase = db.Column(db.Integer, default=1)  # 1 = Registrace týmů, 2 = Skupinová fáze, 3 = Pavouk
 
     def jsonify(self):
 
-        tm = datetime.strptime(self.cas, "%Y-%m-%d %H:%M:%S.%f") - datetime.now()
-        tm = str(tm).split(":")
-        tm = str(11 - int(tm[1])) + ":" + str(59 - int(tm[2].split(".")[0]))
+        if self.pause:
+            tm = self.pause_cas
+        else:
+            tm = datetime.strptime(self.cas, "%Y-%m-%d %H:%M:%S.%f") - datetime.now()
+            tm = str(tm).split(":")
+            tm = str(11 - int(tm[1])) + ":" + str(59 - int(tm[2].split(".")[0]))
+            print(tm)
+
 
         return {
             'minuty': tm.split(":")[0],
             'sekundy': tm.split(":")[1],
             'skore1': self.skore.split(":")[0],
             'skore2': self.skore.split(":")[1],
-            'order': self.current_order
+            'order': self.current_order,
+            'pause': self.pause
         }
 
 
@@ -232,6 +240,7 @@ def get_teams():
 @cross_origin()
 def get_curr_zapas():
     casovac = Casovac.query.first()
+
     zapas = Zapas.query.order_by(Zapas.order).filter(Zapas.order > casovac.current_order).first()
 
     return jsonify({'zapas': zapas.jsonify()})
@@ -244,6 +253,23 @@ def update_casovac():
 
     casovac = Casovac.query.first()
     casovac.cas = datetime.today() + timedelta(minutes=11-int(json["minuty"]), seconds=60-int(json["sekundy"]))
+    casovac.pause = False
+
+    db.session.commit()
+
+    return jsonify({"success": "success"})
+
+
+@app.route('/pause_casovac', methods=['GET', 'POST'])
+@cross_origin()
+def pause_casovac():
+    json = request.json
+
+    casovac = Casovac.query.first()
+    casovac.pause_cas = str(json["minuty"]) + ":" + str(json["sekundy"])
+    casovac.pause = True
+
+    print("heeeeey")
 
     db.session.commit()
 
