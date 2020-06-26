@@ -13,7 +13,6 @@ cors = CORS(app)
 class Tym(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
-    # group_id = db.Column(db.Integer, db.ForeignKey('group.id'), nullable=False)
     hraci = db.relationship('Hrac', backref='Tym', lazy=True, cascade="all, delete-orphan")
 
     nazev = db.Column(db.String(12), nullable=False)
@@ -28,6 +27,7 @@ class Tym(db.Model):
     vstrelene_goly = db.Column(db.Integer, default=0)
     obdrzene_goly = db.Column(db.Integer, default=0)
     body = db.Column(db.Integer, default=0)
+    skupina = db.Column(db.String(1))
 
     domaci = db.relationship('Zapas', backref='Domaci', lazy='dynamic', cascade="all, delete-orphan", foreign_keys='Zapas.domaci')
     hoste = db.relationship('Zapas', backref='Hoste', lazy='dynamic', cascade="all, delete-orphan", foreign_keys='Zapas.hoste')
@@ -54,7 +54,8 @@ class Tym(db.Model):
             "vstrelene_goly": self.vstrelene_goly,
             "obdrzene_goly": self.obdrzene_goly,
             "body": self.body,
-            "zapasy": self.odehrane_zapasy
+            "zapasy": self.odehrane_zapasy,
+            "skupina": self.skupina
         }
 
     def jsonify_adming(self):
@@ -85,6 +86,7 @@ class Zapas(db.Model):
 
     domaci = db.Column(db.Integer, db.ForeignKey('tym.id'))
     hoste = db.Column(db.Integer, db.ForeignKey('tym.id'))
+    skore = skore = db.Column(db.String(10))
 
     order = db.Column(db.Integer, unique=True)
 
@@ -93,7 +95,9 @@ class Zapas(db.Model):
             'id': self.id,
             'domaci': self.Domaci.nazev,
             'hoste': self.Hoste.nazev,
-            'order': self.order
+            'order': self.order,
+            'skore1': self.skore.split(":")[0],
+            'skore2': self.skore.split(":")[1]
         }
 
 
@@ -109,7 +113,6 @@ class Casovac(db.Model):
     cas = db.Column(db.String(100))
     pause_cas = db.Column(db.String(100))
     pause = db.Column(db.Boolean)
-    skore = db.Column(db.String(10))
 
     current_order = db.Column(db.Integer, default=0)
 
@@ -129,8 +132,6 @@ class Casovac(db.Model):
         return {
             'minuty': tm.split(":")[0],
             'sekundy': tm.split(":")[1],
-            'skore1': self.skore.split(":")[0],
-            'skore2': self.skore.split(":")[1],
             'order': self.current_order,
             'pause': self.pause
         }
@@ -138,7 +139,7 @@ class Casovac(db.Model):
 
 @app.route('/init', methods=['GET', 'POST'])
 def init():
-    casovac = Casovac(cas=datetime.today() + timedelta(minutes=11, seconds=60), skore="0:0")
+    casovac = Casovac(cas=datetime.today() + timedelta(minutes=11, seconds=60))
     db.session.add(casovac)
     db.session.commit()
 
@@ -168,7 +169,7 @@ def init():
     db.session.commit()
 
     for i in range(1, 5):
-        zapas = Zapas(domaci=i, hoste=i+1, order=i*10)
+        zapas = Zapas(domaci=i, hoste=i+1, order=i*10, skore="0:0")
         db.session.add(zapas)
     db.session.commit()
 
@@ -178,7 +179,8 @@ def init():
 @app.route('/main', methods=['GET', 'POST'])
 @cross_origin()
 def main():
-    zapasy = Zapas.query.order_by(Zapas.order)
+    casovac = Casovac.query.first()
+    zapasy = Zapas.query.order_by(Zapas.order).filter(Zapas.order > casovac.current_order)
     res = []
     count = 0
 
@@ -189,6 +191,8 @@ def main():
             break
 
     casovac = Casovac.query.first().jsonify()
+    
+
 
     return jsonify({'zapasy': res, 'casovac': casovac})
 
@@ -223,6 +227,19 @@ def update_order():
     db.session.commit()
 
     return 'Success'
+
+
+@app.route('/update_skore', methods=['GET', 'POST'])
+def update_skore():
+    json = request.json
+
+    casovac = Casovac.query.first()
+    zapas = Zapas.query.order_by(Zapas.order).filter(Zapas.order > casovac.current_order).first()
+    zapas.skore = str(json['skoreDomaci']) + ":" + str(json['skoreHoste'])
+
+    db.session.commit()
+
+    return jsonify({"success": "success"})
 
 
 @app.route('/get_teams', methods=['GET'])
@@ -281,7 +298,7 @@ def pause_casovac():
 def add_zapas():
     json = request.json
     print(json)
-    zapas = Zapas(domaci=json['domaci_id'], hoste=json['hoste_id'], order=json['order'])
+    zapas = Zapas(domaci=json['domaci_id'], hoste=json['hoste_id'], order=json['order'], skore="0:0")
     db.session.add(zapas)
     db.session.commit()
 
