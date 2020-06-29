@@ -128,12 +128,11 @@ class Casovac(db.Model):
             tm = str(11 - int(tm[1])) + ":" + str(59 - int(tm[2].split(".")[0]))
             print(tm)
 
-
         return {
             'minuty': tm.split(":")[0],
             'sekundy': tm.split(":")[1],
             'order': self.current_order,
-            'pause': self.pause
+            'pause': self.pause,
         }
 
 
@@ -191,10 +190,14 @@ def main():
             break
 
     casovac = Casovac.query.first().jsonify()
-    
 
+    tymy = Tym.query.filter(Tym.skupina == zapasy[0].Domaci.skupina)
+    tymy_res = []
 
-    return jsonify({'zapasy': res, 'casovac': casovac})
+    for i in tymy:
+        tymy_res.append(i.jsonify())
+
+    return jsonify({'zapasy': res, 'casovac': casovac, 'tymy': tymy_res})
 
 
 @app.route('/adming', methods=['GET', 'POST'])
@@ -217,6 +220,19 @@ def adming():
     return jsonify({'zapasy': res, 'tymy': tymy_res})
 
 
+@app.route('/dalsi_zapas', methods=['GET', 'POST'])
+@cross_origin()
+def dalsi_zapas():
+    casovac = Casovac.query.first()
+    zapas = Zapas.query.order_by(Zapas.order).filter(Zapas.order > casovac.current_order).first()
+
+    casovac.current_order = zapas.order
+    zapas = Zapas.query.order_by(Zapas.order).filter(Zapas.order > casovac.current_order).first()
+    db.session.commit()
+
+    return jsonify({'zapas': zapas.jsonify()})
+
+
 @app.route('/update_order', methods=['GET', 'POST'])
 def update_order():
     json = request.json
@@ -224,6 +240,23 @@ def update_order():
     zapas = Zapas.query.filter(Zapas.id == json["id"]).first()
     zapas.order = int(json["order"])
 
+    db.session.commit()
+
+    return 'Success'
+
+
+@app.route('/update_tym_statistiky', methods=['GET', 'POST'])
+def update_tym_statistiky():
+    json = request.json
+    tym = Tym.query.filter(Tym.id == json["id"]).first()
+    tym.body = json["body"]
+    tym.odehrane_zapasy = json["zapasy"]
+    tym.vyhry = json["vyhry"]
+    tym.remizy = json["remizy"]
+    tym.prohry = json["prohry"]
+    tym.obdrzene_goly = json["obdrzene_goly"]
+    tym.vstrelene_goly = json["vstrelene_goly"]
+    tym.skupina = json["skupina"]
     db.session.commit()
 
     return 'Success'
@@ -411,7 +444,6 @@ def statistika():
 @app.route('/choose_team', methods=['GET', 'POST'])
 @cross_origin()
 def choose_team():
-
     tymy = Tym.query.order_by(Tym.zaplaceno).order_by(Tym.nazev)
 
     result = []
@@ -420,6 +452,19 @@ def choose_team():
         result.append(i.jsonify())
 
     return jsonify({'tymy': result})
+
+
+@app.route('/get_zapasy', methods=['GET', 'POST'])
+@cross_origin()
+def get_zapasy():
+    res = []
+
+    casovac = Casovac.query.first()
+    zapasy = Zapas.query.order_by(Zapas.order).filter(Zapas.order > casovac.current_order)
+    for i in zapasy:
+        res.append(i.jsonify())
+
+    return jsonify({'zapasy': res})
 
 
 if __name__ == '__main__':
