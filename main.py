@@ -203,7 +203,9 @@ def main():
 @app.route('/adming', methods=['GET', 'POST'])
 @cross_origin()
 def adming():
-    zapasy = Zapas.query.order_by(Zapas.order)
+    casovac = Casovac.query.first()
+
+    zapasy = Zapas.query.order_by(Zapas.order).filter(Zapas.order > casovac.current_order)
     res = []
     count = 0
 
@@ -211,13 +213,21 @@ def adming():
         count += 1
         res.append(i.jsonify())
 
+    odehrane_zapasy = Zapas.query.order_by(Zapas.order).filter(Zapas.order <= casovac.current_order)
+    od_zap_res = []
+    count = 0
+
+    for i in odehrane_zapasy:
+        count += 1
+        od_zap_res.append(i.jsonify())
+
     tymy = Tym.query.order_by(Tym.nazev)
     tymy_res = []
 
     for i in tymy:
         tymy_res.append(i.jsonify())
 
-    return jsonify({'zapasy': res, 'tymy': tymy_res})
+    return jsonify({'zapasy': res, 'tymy': tymy_res, 'odehrane_zapasy': od_zap_res})
 
 
 @app.route('/dalsi_zapas', methods=['GET', 'POST'])
@@ -239,6 +249,18 @@ def update_order():
 
     zapas = Zapas.query.filter(Zapas.id == json["id"]).first()
     zapas.order = int(json["order"])
+
+    db.session.commit()
+
+    return 'Success'
+
+
+@app.route('/update_skore_odehrany_zapas', methods=['GET', 'POST'])
+def update_skore_odehrany_zapas():
+    json = request.json
+
+    zapas = Zapas.query.filter(Zapas.id == json["id"]).first()
+    zapas.skore = json["skore1"] + ":" + json["skore2"]
 
     db.session.commit()
 
@@ -458,13 +480,18 @@ def choose_team():
 @cross_origin()
 def get_zapasy():
     res = []
+    odeh_res = []
 
     casovac = Casovac.query.first()
     zapasy = Zapas.query.order_by(Zapas.order).filter(Zapas.order > casovac.current_order)
     for i in zapasy:
         res.append(i.jsonify())
 
-    return jsonify({'zapasy': res})
+    odeh_zapasy = Zapas.query.order_by(Zapas.order).filter(Zapas.order <= casovac.current_order)
+    for i in odeh_zapasy:
+        odeh_res.append(i.jsonify())
+
+    return jsonify({'zapasy': res, 'odehrane_zapasy': odeh_res})
 
 
 if __name__ == '__main__':
