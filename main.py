@@ -120,7 +120,9 @@ class Casovac(db.Model):
 
     def jsonify(self):
 
-        if self.pause:
+        if self.cas == "0:00":
+          tm = "0:0"
+        elif self.pause:
             tm = self.pause_cas
         else:
             tm = datetime.strptime(self.cas, "%Y-%m-%d %H:%M:%S.%f") - datetime.now()
@@ -133,6 +135,11 @@ class Casovac(db.Model):
             'sekundy': tm.split(":")[1],
             'order': self.current_order,
             'pause': self.pause,
+        }
+
+    def debug(self):
+        return {
+            'casovac': self.cas
         }
 
 
@@ -173,6 +180,14 @@ def init():
     db.session.commit()
 
     return 'success'
+
+
+@app.route('/debug', methods=['GET', 'POST'])
+@cross_origin()
+def debug():
+    casovac = Casovac.query.first()
+
+    return jsonify({'casovac': casovac.debug()})
 
 
 @app.route('/main', methods=['GET', 'POST'])
@@ -238,6 +253,10 @@ def dalsi_zapas():
 
     casovac.current_order = zapas.order
     zapas = Zapas.query.order_by(Zapas.order).filter(Zapas.order > casovac.current_order).first()
+
+    casovac.cas = "0:00"
+    casovac.pause = True
+    casovac.pause_cas = True
     db.session.commit()
 
     return jsonify({'zapas': zapas.jsonify()})
@@ -306,6 +325,22 @@ def get_teams():
         res.append(i.jsonify())
     print(res)
     return jsonify({'tymy': res})
+
+
+@app.route('/get_tym', methods=['GET', 'POST'])
+@cross_origin()
+def get_tym():
+    json = request.json
+
+    print(json["nazev"])
+
+    tym = Tym.query.filter(Tym.nazev.ilike(json["nazev"])).first()
+
+    if tym:
+        tym = tym.jsonify()
+    else:
+        tym = "No"
+    return jsonify({'tym': tym})
 
 
 @app.route('/get_curr_zapas', methods=['GET'])
